@@ -11,17 +11,76 @@
 </head>
 <body>
     <div id="root"></div>
+    
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+        import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDxacZJIR4v0gNWw9UnfxQFcJlzW7wn4Dw",
+            authDomain: "sarahrenttracker.firebaseapp.com",
+            projectId: "sarahrenttracker",
+            storageBucket: "sarahrenttracker.firebasestorage.app",
+            messagingSenderId: "276065592139",
+            appId: "1:276065592139:web:be2ef046f3b32d87fc7ece"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        
+        // Make Firebase available globally
+        window.db = db;
+        window.collection = collection;
+        window.getDocs = getDocs;
+        window.addDoc = addDoc;
+        window.deleteDoc = deleteDoc;
+        window.doc = doc;
+        window.onSnapshot = onSnapshot;
+        
+        // Signal that Firebase is ready
+        window.firebaseReady = true;
+        window.dispatchEvent(new Event('firebaseReady'));
+    </script>
+
     <script type="text/babel">
         function App() {
           const [selectedDate, setSelectedDate] = React.useState(new Date().toISOString().split('T')[0]);
-          const [payments, setPayments] = React.useState([
-            { item: 'Cleaning', cost: 250, datePaid: '2026-01-15' }
-          ]);
+          const [payments, setPayments] = React.useState([]);
           const [newPayment, setNewPayment] = React.useState({ item: '', cost: '', datePaid: '' });
           const [showAddForm, setShowAddForm] = React.useState(false);
+          const [loading, setLoading] = React.useState(true);
 
           const monthlyRent = 1100;
           const moveInDate = new Date('2025-11-15');
+
+          // Load payments from Firebase on mount
+          React.useEffect(() => {
+            const loadPayments = async () => {
+              if (!window.firebaseReady) {
+                await new Promise(resolve => {
+                  window.addEventListener('firebaseReady', resolve, { once: true });
+                });
+              }
+
+              // Set up real-time listener
+              const unsubscribe = window.onSnapshot(
+                window.collection(window.db, 'payments'),
+                (snapshot) => {
+                  const paymentsData = [];
+                  snapshot.forEach((doc) => {
+                    paymentsData.push({ id: doc.id, ...doc.data() });
+                  });
+                  setPayments(paymentsData);
+                  setLoading(false);
+                }
+              );
+
+              return unsubscribe;
+            };
+
+            loadPayments();
+          }, []);
 
           const calculateOwed = (checkDate) => {
             const check = new Date(checkDate);
@@ -40,19 +99,41 @@
             };
           };
 
-          const handleAddPayment = () => {
+          const handleAddPayment = async () => {
             if (newPayment.item && newPayment.cost && newPayment.datePaid) {
-              setPayments([...payments, { ...newPayment, cost: parseFloat(newPayment.cost) }]);
-              setNewPayment({ item: '', cost: '', datePaid: '' });
-              setShowAddForm(false);
+              try {
+                await window.addDoc(window.collection(window.db, 'payments'), {
+                  item: newPayment.item,
+                  cost: parseFloat(newPayment.cost),
+                  datePaid: newPayment.datePaid
+                });
+                setNewPayment({ item: '', cost: '', datePaid: '' });
+                setShowAddForm(false);
+              } catch (error) {
+                console.error("Error adding payment:", error);
+                alert("Error adding payment. Please try again.");
+              }
             }
           };
 
-          const handleDeletePayment = (index) => {
-            setPayments(payments.filter((_, i) => i !== index));
+          const handleDeletePayment = async (paymentId) => {
+            try {
+              await window.deleteDoc(window.doc(window.db, 'payments', paymentId));
+            } catch (error) {
+              console.error("Error deleting payment:", error);
+              alert("Error deleting payment. Please try again.");
+            }
           };
 
           const result = calculateOwed(selectedDate);
+
+          if (loading) {
+            return (
+              <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+                <div className="text-2xl font-bold text-indigo-900">Loading...</div>
+              </div>
+            );
+          }
 
           return (
             <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
@@ -171,14 +252,14 @@
                             </td>
                           </tr>
                         ) : (
-                          payments.map((payment, index) => (
-                            <tr key={index} className="border-t">
+                          payments.map((payment) => (
+                            <tr key={payment.id} className="border-t">
                               <td className="px-4 py-3">{payment.item}</td>
                               <td className="px-4 py-3">${payment.cost.toLocaleString()}</td>
                               <td className="px-4 py-3">{new Date(payment.datePaid).toLocaleDateString()}</td>
                               <td className="px-4 py-3">
                                 <button
-                                  onClick={() => handleDeletePayment(index)}
+                                  onClick={() => handleDeletePayment(payment.id)}
                                   className="text-red-600 hover:text-red-800 font-semibold"
                                 >
                                   Delete
