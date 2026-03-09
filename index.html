@@ -1,283 +1,414 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sarah Rent Tracker</title>
-    <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sarah Rent Tracker</title>
+  <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link
+    href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+    rel="stylesheet"
+  />
 </head>
 <body>
-    <div id="root"></div>
-    
-    <!-- Firebase SDK -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
-        import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+  <div id="root"></div>
 
-        const firebaseConfig = {
-            apiKey: "AIzaSyDxacZJIR4v0gNWw9UnfxQFcJlzW7wn4Dw",
-            authDomain: "sarahrenttracker.firebaseapp.com",
-            projectId: "sarahrenttracker",
-            storageBucket: "sarahrenttracker.firebasestorage.app",
-            messagingSenderId: "276065592139",
-            appId: "1:276065592139:web:be2ef046f3b32d87fc7ece"
-        };
+  <!--
+    Create a separate config.js file that defines:
+    window.FIREBASE_CONFIG = { ... }
+    Do NOT commit that file to public repos.
+  -->
+  <script src="./config.js"></script>
 
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        
-        // Make Firebase available globally
-        window.db = db;
-        window.collection = collection;
-        window.getDocs = getDocs;
-        window.addDoc = addDoc;
-        window.deleteDoc = deleteDoc;
-        window.doc = doc;
-        window.onSnapshot = onSnapshot;
-        
-        // Signal that Firebase is ready
-        window.firebaseReady = true;
-        window.dispatchEvent(new Event('firebaseReady'));
-    </script>
+  <!-- Firebase SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+    import {
+      getFirestore,
+      collection,
+      addDoc,
+      deleteDoc,
+      doc,
+      onSnapshot
+    } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
 
-    <script type="text/babel">
-        function App() {
-          const [selectedDate, setSelectedDate] = React.useState(new Date().toISOString().split('T')[0]);
-          const [payments, setPayments] = React.useState([]);
-          const [newPayment, setNewPayment] = React.useState({ item: '', cost: '', datePaid: '' });
-          const [showAddForm, setShowAddForm] = React.useState(false);
-          const [loading, setLoading] = React.useState(true);
+    if (!window.FIREBASE_CONFIG) {
+      console.error("Missing Firebase config. Make sure config.js is loaded.");
+      window.firebaseInitError = "Missing Firebase config";
+      window.dispatchEvent(new Event("firebaseInitError"));
+    } else {
+      const app = initializeApp(window.FIREBASE_CONFIG);
+      const db = getFirestore(app);
 
-          const monthlyRent = 1100;
-          const moveInDate = new Date('2025-11-15');
+      window.firebase = {
+        db,
+        collection,
+        addDoc,
+        deleteDoc,
+        doc,
+        onSnapshot
+      };
 
-          // Load payments from Firebase on mount
-          React.useEffect(() => {
-            const loadPayments = async () => {
-              if (!window.firebaseReady) {
-                await new Promise(resolve => {
-                  window.addEventListener('firebaseReady', resolve, { once: true });
-                });
-              }
+      window.firebaseReady = true;
+      window.dispatchEvent(new Event("firebaseReady"));
+    }
+  </script>
 
-              // Set up real-time listener
-              const unsubscribe = window.onSnapshot(
-                window.collection(window.db, 'payments'),
-                (snapshot) => {
-                  const paymentsData = [];
-                  snapshot.forEach((doc) => {
-                    paymentsData.push({ id: doc.id, ...doc.data() });
-                  });
+  <script type="text/babel">
+    function App() {
+      const [selectedDate, setSelectedDate] = React.useState(
+        new Date().toISOString().split("T")[0]
+      );
+      const [payments, setPayments] = React.useState([]);
+      const [newPayment, setNewPayment] = React.useState({
+        item: "",
+        cost: "",
+        datePaid: ""
+      });
+      const [showAddForm, setShowAddForm] = React.useState(false);
+      const [loading, setLoading] = React.useState(true);
+      const [error, setError] = React.useState("");
+
+      const monthlyRent = 1100;
+      const moveInDate = new Date("2025-11-15T00:00:00");
+
+      React.useEffect(() => {
+        let unsubscribe = null;
+        let cancelled = false;
+
+        async function init() {
+          try {
+            if (!window.firebaseReady) {
+              await new Promise((resolve, reject) => {
+                const onReady = () => {
+                  cleanup();
+                  resolve();
+                };
+                const onError = () => {
+                  cleanup();
+                  reject(new Error(window.firebaseInitError || "Firebase failed to initialize"));
+                };
+                const cleanup = () => {
+                  window.removeEventListener("firebaseReady", onReady);
+                  window.removeEventListener("firebaseInitError", onError);
+                };
+
+                window.addEventListener("firebaseReady", onReady, { once: true });
+                window.addEventListener("firebaseInitError", onError, { once: true });
+              });
+            }
+
+            if (cancelled) return;
+
+            const { db, collection, onSnapshot } = window.firebase;
+
+            unsubscribe = onSnapshot(
+              collection(db, "payments"),
+              (snapshot) => {
+                const paymentsData = snapshot.docs.map((d) => ({
+                  id: d.id,
+                  ...d.data()
+                }));
+
+                // Optional: keep newest payments first
+                paymentsData.sort((a, b) => new Date(b.datePaid) - new Date(a.datePaid));
+
+                if (!cancelled) {
                   setPayments(paymentsData);
                   setLoading(false);
                 }
-              );
-
-              return unsubscribe;
-            };
-
-            loadPayments();
-          }, []);
-
-          const calculateOwed = (checkDate) => {
-            const check = new Date(checkDate);
-            const monthsPassed = Math.floor((check - moveInDate) / (1000 * 60 * 60 * 24 * 30.44));
-            const totalOwed = (monthsPassed + 1) * monthlyRent;
-            
-            const totalPaid = payments
-              .filter(p => new Date(p.datePaid) <= check)
-              .reduce((sum, p) => sum + p.cost, 0);
-            
-            return {
-              totalOwed,
-              totalPaid,
-              balance: totalOwed - totalPaid,
-              monthsPassed: monthsPassed + 1
-            };
-          };
-
-          const handleAddPayment = async () => {
-            if (newPayment.item && newPayment.cost && newPayment.datePaid) {
-              try {
-                await window.addDoc(window.collection(window.db, 'payments'), {
-                  item: newPayment.item,
-                  cost: parseFloat(newPayment.cost),
-                  datePaid: newPayment.datePaid
-                });
-                setNewPayment({ item: '', cost: '', datePaid: '' });
-                setShowAddForm(false);
-              } catch (error) {
-                console.error("Error adding payment:", error);
-                alert("Error adding payment. Please try again.");
+              },
+              (err) => {
+                console.error("Error loading payments:", err);
+                if (!cancelled) {
+                  setError("Could not load payments.");
+                  setLoading(false);
+                }
               }
-            }
-          };
-
-          const handleDeletePayment = async (paymentId) => {
-            try {
-              await window.deleteDoc(window.doc(window.db, 'payments', paymentId));
-            } catch (error) {
-              console.error("Error deleting payment:", error);
-              alert("Error deleting payment. Please try again.");
-            }
-          };
-
-          const result = calculateOwed(selectedDate);
-
-          if (loading) {
-            return (
-              <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-                <div className="text-2xl font-bold text-indigo-900">Loading...</div>
-              </div>
             );
+          } catch (err) {
+            console.error(err);
+            if (!cancelled) {
+              setError(err.message || "Failed to initialize app.");
+              setLoading(false);
+            }
           }
-
-          return (
-            <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
-              <div className="max-w-4xl mx-auto">
-                <h1 className="text-4xl font-bold text-center text-indigo-900 mb-8">
-                  Sarah Rent Tracker Dashboard
-                </h1>
-
-                <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-                  <div className="mb-6">
-                    <label className="block text-lg font-semibold text-gray-700 mb-2">
-                      Select Date to Check Balance:
-                    </label>
-                    <input
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      className="w-full px-4 py-3 border-2 border-indigo-300 rounded-lg text-lg focus:outline-none focus:border-indigo-500"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                    <div className="bg-indigo-50 p-4 rounded-lg">
-                      <p className="text-sm text-gray-600 mb-1">Move-in Date</p>
-                      <p className="text-xl font-bold text-indigo-900">November 15, 2025</p>
-                    </div>
-                    <div className="bg-indigo-50 p-4 rounded-lg">
-                      <p className="text-sm text-gray-600 mb-1">Monthly Rent</p>
-                      <p className="text-xl font-bold text-indigo-900">${monthlyRent.toLocaleString()}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                    <div className="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
-                      <p className="text-sm text-gray-600 mb-1">Months Passed</p>
-                      <p className="text-2xl font-bold text-blue-700">{result.monthsPassed}</p>
-                    </div>
-                    <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200">
-                      <p className="text-sm text-gray-600 mb-1">Total Owed</p>
-                      <p className="text-2xl font-bold text-red-700">${result.totalOwed.toLocaleString()}</p>
-                    </div>
-                    <div className="bg-green-50 p-4 rounded-lg border-2 border-green-200">
-                      <p className="text-sm text-gray-600 mb-1">Total Paid</p>
-                      <p className="text-2xl font-bold text-green-700">${result.totalPaid.toLocaleString()}</p>
-                    </div>
-                  </div>
-
-                  <div className={`p-6 rounded-lg border-4 ${result.balance > 0 ? 'bg-red-100 border-red-400' : 'bg-green-100 border-green-400'}`}>
-                    <p className="text-lg text-gray-700 mb-2">Current Balance:</p>
-                    <p className={`text-4xl font-bold ${result.balance > 0 ? 'text-red-700' : 'text-green-700'}`}>
-                      ${Math.abs(result.balance).toLocaleString()}
-                      {result.balance > 0 ? ' OWED' : ' CREDIT'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-lg shadow-lg p-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-2xl font-bold text-gray-800">Payments Made</h2>
-                    <button
-                      onClick={() => setShowAddForm(!showAddForm)}
-                      className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-semibold"
-                    >
-                      {showAddForm ? 'Cancel' : '+ Add Payment'}
-                    </button>
-                  </div>
-
-                  {showAddForm && (
-                    <div className="bg-indigo-50 p-4 rounded-lg mb-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-                        <input
-                          type="text"
-                          placeholder="Item (e.g., Furniture)"
-                          value={newPayment.item}
-                          onChange={(e) => setNewPayment({...newPayment, item: e.target.value})}
-                          className="px-3 py-2 border border-gray-300 rounded"
-                        />
-                        <input
-                          type="number"
-                          placeholder="Cost"
-                          value={newPayment.cost}
-                          onChange={(e) => setNewPayment({...newPayment, cost: e.target.value})}
-                          className="px-3 py-2 border border-gray-300 rounded"
-                        />
-                        <input
-                          type="date"
-                          value={newPayment.datePaid}
-                          onChange={(e) => setNewPayment({...newPayment, datePaid: e.target.value})}
-                          className="px-3 py-2 border border-gray-300 rounded"
-                        />
-                      </div>
-                      <button
-                        onClick={handleAddPayment}
-                        className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold"
-                      >
-                        Save Payment
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-gray-100">
-                          <th className="px-4 py-2 text-left">Item</th>
-                          <th className="px-4 py-2 text-left">Cost</th>
-                          <th className="px-4 py-2 text-left">Date Paid</th>
-                          <th className="px-4 py-2 text-left">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {payments.length === 0 ? (
-                          <tr>
-                            <td colSpan="4" className="px-4 py-4 text-center text-gray-500">
-                              No payments recorded yet
-                            </td>
-                          </tr>
-                        ) : (
-                          payments.map((payment) => (
-                            <tr key={payment.id} className="border-t">
-                              <td className="px-4 py-3">{payment.item}</td>
-                              <td className="px-4 py-3">${payment.cost.toLocaleString()}</td>
-                              <td className="px-4 py-3">{new Date(payment.datePaid).toLocaleDateString()}</td>
-                              <td className="px-4 py-3">
-                                <button
-                                  onClick={() => handleDeletePayment(payment.id)}
-                                  className="text-red-600 hover:text-red-800 font-semibold"
-                                >
-                                  Delete
-                                </button>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
         }
 
-        ReactDOM.render(<App />, document.getElementById('root'));
-    </script>
+        init();
+
+        return () => {
+          cancelled = true;
+          if (unsubscribe) unsubscribe();
+        };
+      }, []);
+
+      const calculateMonthsPassed = (fromDate, toDate) => {
+        const start = new Date(fromDate);
+        const end = new Date(toDate);
+
+        if (end < start) return 0;
+
+        let months =
+          (end.getFullYear() - start.getFullYear()) * 12 +
+          (end.getMonth() - start.getMonth());
+
+        if (end.getDate() >= start.getDate()) {
+          months += 1;
+        }
+
+        return Math.max(months, 1);
+      };
+
+      const calculateOwed = (checkDate) => {
+        const check = new Date(`${checkDate}T00:00:00`);
+        const monthsPassed = calculateMonthsPassed(moveInDate, check);
+        const totalOwed = monthsPassed * monthlyRent;
+
+        const totalPaid = payments
+          .filter((p) => new Date(`${p.datePaid}T00:00:00`) <= check)
+          .reduce((sum, p) => sum + Number(p.cost || 0), 0);
+
+        return {
+          totalOwed,
+          totalPaid,
+          balance: totalOwed - totalPaid,
+          monthsPassed
+        };
+      };
+
+      const handleAddPayment = async () => {
+        const item = newPayment.item.trim();
+        const cost = parseFloat(newPayment.cost);
+        const datePaid = newPayment.datePaid;
+
+        if (!item || !datePaid || Number.isNaN(cost) || cost <= 0) {
+          alert("Please enter a valid item, cost, and payment date.");
+          return;
+        }
+
+        try {
+          const { db, collection, addDoc } = window.firebase;
+
+          await addDoc(collection(db, "payments"), {
+            item,
+            cost,
+            datePaid,
+            createdAt: new Date().toISOString()
+          });
+
+          setNewPayment({ item: "", cost: "", datePaid: "" });
+          setShowAddForm(false);
+        } catch (err) {
+          console.error("Error adding payment:", err);
+          alert("Error adding payment. Please try again.");
+        }
+      };
+
+      const handleDeletePayment = async (paymentId) => {
+        try {
+          const { db, doc, deleteDoc } = window.firebase;
+          await deleteDoc(doc(db, "payments", paymentId));
+        } catch (err) {
+          console.error("Error deleting payment:", err);
+          alert("Error deleting payment. Please try again.");
+        }
+      };
+
+      const result = calculateOwed(selectedDate);
+
+      if (loading) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+            <div className="text-2xl font-bold text-indigo-900">Loading...</div>
+          </div>
+        );
+      }
+
+      if (error) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6">
+            <div className="bg-white rounded-lg shadow-lg p-6 max-w-lg w-full">
+              <h1 className="text-2xl font-bold text-red-700 mb-2">App Error</h1>
+              <p className="text-gray-700">{error}</p>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
+          <div className="max-w-4xl mx-auto">
+            <h1 className="text-4xl font-bold text-center text-indigo-900 mb-8">
+              Sarah Rent Tracker Dashboard
+            </h1>
+
+            <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+              <div className="mb-6">
+                <label className="block text-lg font-semibold text-gray-700 mb-2">
+                  Select Date to Check Balance:
+                </label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="w-full px-4 py-3 border-2 border-indigo-300 rounded-lg text-lg focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div className="bg-indigo-50 p-4 rounded-lg">
+                  <p className="text-sm text-gray-600 mb-1">Move-in Date</p>
+                  <p className="text-xl font-bold text-indigo-900">November 15, 2025</p>
+                </div>
+                <div className="bg-indigo-50 p-4 rounded-lg">
+                  <p className="text-sm text-gray-600 mb-1">Monthly Rent</p>
+                  <p className="text-xl font-bold text-indigo-900">
+                    ${monthlyRent.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-blue-50 p-4 rounded-lg border-2 border-blue-200">
+                  <p className="text-sm text-gray-600 mb-1">Months Passed</p>
+                  <p className="text-2xl font-bold text-blue-700">{result.monthsPassed}</p>
+                </div>
+                <div className="bg-red-50 p-4 rounded-lg border-2 border-red-200">
+                  <p className="text-sm text-gray-600 mb-1">Total Owed</p>
+                  <p className="text-2xl font-bold text-red-700">
+                    ${result.totalOwed.toLocaleString()}
+                  </p>
+                </div>
+                <div className="bg-green-50 p-4 rounded-lg border-2 border-green-200">
+                  <p className="text-sm text-gray-600 mb-1">Total Paid</p>
+                  <p className="text-2xl font-bold text-green-700">
+                    ${result.totalPaid.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              <div
+                className={`p-6 rounded-lg border-4 ${
+                  result.balance > 0
+                    ? "bg-red-100 border-red-400"
+                    : "bg-green-100 border-green-400"
+                }`}
+              >
+                <p className="text-lg text-gray-700 mb-2">Current Balance:</p>
+                <p
+                  className={`text-4xl font-bold ${
+                    result.balance > 0 ? "text-red-700" : "text-green-700"
+                  }`}
+                >
+                  ${Math.abs(result.balance).toLocaleString()}{" "}
+                  {result.balance > 0 ? "OWED" : "CREDIT"}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-2xl font-bold text-gray-800">Payments Made</h2>
+                <button
+                  onClick={() => setShowAddForm(!showAddForm)}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-semibold"
+                >
+                  {showAddForm ? "Cancel" : "+ Add Payment"}
+                </button>
+              </div>
+
+              {showAddForm && (
+                <div className="bg-indigo-50 p-4 rounded-lg mb-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                    <input
+                      type="text"
+                      placeholder="Item (e.g., Furniture)"
+                      value={newPayment.item}
+                      onChange={(e) =>
+                        setNewPayment({ ...newPayment, item: e.target.value })
+                      }
+                      className="px-3 py-2 border border-gray-300 rounded"
+                    />
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="Cost"
+                      value={newPayment.cost}
+                      onChange={(e) =>
+                        setNewPayment({ ...newPayment, cost: e.target.value })
+                      }
+                      className="px-3 py-2 border border-gray-300 rounded"
+                    />
+                    <input
+                      type="date"
+                      value={newPayment.datePaid}
+                      onChange={(e) =>
+                        setNewPayment({ ...newPayment, datePaid: e.target.value })
+                      }
+                      className="px-3 py-2 border border-gray-300 rounded"
+                    />
+                  </div>
+                  <button
+                    onClick={handleAddPayment}
+                    className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 font-semibold"
+                  >
+                    Save Payment
+                  </button>
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="px-4 py-2 text-left">Item</th>
+                      <th className="px-4 py-2 text-left">Cost</th>
+                      <th className="px-4 py-2 text-left">Date Paid</th>
+                      <th className="px-4 py-2 text-left">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.length === 0 ? (
+                      <tr>
+                        <td colSpan="4" className="px-4 py-4 text-center text-gray-500">
+                          No payments recorded yet
+                        </td>
+                      </tr>
+                    ) : (
+                      payments.map((payment) => (
+                        <tr key={payment.id} className="border-t">
+                          <td className="px-4 py-3">{payment.item}</td>
+                          <td className="px-4 py-3">
+                            ${Number(payment.cost).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3">
+                            {new Date(`${payment.datePaid}T00:00:00`).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-3">
+                            <button
+                              onClick={() => handleDeletePayment(payment.id)}
+                              className="text-red-600 hover:text-red-800 font-semibold"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById("root"));
+  </script>
 </body>
 </html>
