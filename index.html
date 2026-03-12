@@ -68,8 +68,11 @@
         datePaid: ""
       });
       const [showAddForm, setShowAddForm] = React.useState(false);
-      const [loading, setLoading] = React.useState(true);
-      const [error, setError] = React.useState("");
+const [loading, setLoading] = React.useState(true);
+const [error, setError] = React.useState("");
+const [authenticated, setAuthenticated] = React.useState(false);
+const [pinInput, setPinInput] = React.useState("");
+const [pinError, setPinError] = React.useState("");
 
       const monthlyRent = 1100;
       const moveInDate = new Date("2025-11-15T00:00:00");
