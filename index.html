@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+content = '''<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -28,6 +28,12 @@
       doc,
       onSnapshot
     } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
+    import {
+      getAuth,
+      signInWithEmailAndPassword,
+      onAuthStateChanged,
+      signOut
+    } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
 
     if (!window.FIREBASE_CONFIG) {
       console.error("Missing Firebase config. Make sure config.js is loaded.");
@@ -36,14 +42,19 @@
     } else {
       const app = initializeApp(window.FIREBASE_CONFIG);
       const db = getFirestore(app);
+      const auth = getAuth(app);
 
       window.firebase = {
         db,
+        auth,
         collection,
         addDoc,
         deleteDoc,
         doc,
-        onSnapshot
+        onSnapshot,
+        signInWithEmailAndPassword,
+        onAuthStateChanged,
+        signOut
       };
 
       window.firebaseReady = true;
@@ -65,36 +76,32 @@
       const [showAddForm, setShowAddForm] = React.useState(false);
       const [loading, setLoading] = React.useState(true);
       const [error, setError] = React.useState("");
-      
-      // PIN Login State
-      const [authenticated, setAuthenticated] = React.useState(false);
-      const [pinInput, setPinInput] = React.useState("");
-      const [pinError, setPinError] = React.useState("");
+
+      // Auth state
+      const [user, setUser] = React.useState(null);
+      const [authReady, setAuthReady] = React.useState(false);
+      const [email, setEmail] = React.useState("");
+      const [password, setPassword] = React.useState("");
+      const [loginError, setLoginError] = React.useState("");
+      const [loginLoading, setLoginLoading] = React.useState(false);
 
       const monthlyRent = 1100;
       const moveInDate = new Date("2025-11-15T00:00:00");
 
+      // Step 1: Wait for Firebase, then listen for auth state
       React.useEffect(() => {
-        let unsubscribe = null;
         let cancelled = false;
 
         async function init() {
           try {
             if (!window.firebaseReady) {
               await new Promise((resolve, reject) => {
-                const onReady = () => {
-                  cleanup();
-                  resolve();
-                };
-                const onError = () => {
-                  cleanup();
-                  reject(new Error(window.firebaseInitError || "Firebase failed to initialize"));
-                };
+                const onReady = () => { cleanup(); resolve(); };
+                const onError = () => { cleanup(); reject(new Error(window.firebaseInitError || "Firebase failed to initialize")); };
                 const cleanup = () => {
                   window.removeEventListener("firebaseReady", onReady);
                   window.removeEventListener("firebaseInitError", onError);
                 };
-
                 window.addEventListener("firebaseReady", onReady, { once: true });
                 window.addEventListener("firebaseInitError", onError, { once: true });
               });
@@ -102,56 +109,82 @@
 
             if (cancelled) return;
 
-            const { db, collection, onSnapshot } = window.firebase;
+            const { auth, onAuthStateChanged } = window.firebase;
 
-            unsubscribe = onSnapshot(
-              collection(db, "payments"),
-              (snapshot) => {
-                const paymentsData = snapshot.docs.map((d) => ({
-                  id: d.id,
-                  ...d.data()
-                }));
-
-                paymentsData.sort((a, b) => new Date(b.datePaid) - new Date(a.datePaid));
-
-                if (!cancelled) {
-                  setPayments(paymentsData);
-                  setLoading(false);
-                }
-              },
-              (err) => {
-                console.error("Error loading payments:", err);
-                if (!cancelled) {
-                  setError("Could not load payments.");
+            onAuthStateChanged(auth, (firebaseUser) => {
+              if (!cancelled) {
+                setUser(firebaseUser);
+                setAuthReady(true);
+                if (!firebaseUser) {
                   setLoading(false);
                 }
               }
-            );
+            });
           } catch (err) {
             console.error(err);
             if (!cancelled) {
               setError(err.message || "Failed to initialize app.");
               setLoading(false);
+              setAuthReady(true);
             }
           }
         }
 
         init();
+        return () => { cancelled = true; };
+      }, []);
+
+      // Step 2: Once logged in, subscribe to payments
+      React.useEffect(() => {
+        if (!user) return;
+
+        let cancelled = false;
+        const { db, collection, onSnapshot } = window.firebase;
+
+        const unsubscribe = onSnapshot(
+          collection(db, "payments"),
+          (snapshot) => {
+            const paymentsData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+            paymentsData.sort((a, b) => new Date(b.datePaid) - new Date(a.datePaid));
+            if (!cancelled) {
+              setPayments(paymentsData);
+              setLoading(false);
+            }
+          },
+          (err) => {
+            console.error("Error loading payments:", err);
+            if (!cancelled) {
+              setError("Could not load payments.");
+              setLoading(false);
+            }
+          }
+        );
 
         return () => {
           cancelled = true;
-          if (unsubscribe) unsubscribe();
+          unsubscribe();
         };
-      }, []);
+      }, [user]);
 
-      const handleUnlock = () => {
-        if (pinInput === window.APP_PIN) {
-          setAuthenticated(true);
-          setPinError("");
-        } else {
-          setPinError("Incorrect PIN. Try again.");
-          setPinInput("");
+      const handleLogin = async () => {
+        setLoginError("");
+        setLoginLoading(true);
+        try {
+          const { auth, signInWithEmailAndPassword } = window.firebase;
+          await signInWithEmailAndPassword(auth, email, password);
+        } catch (err) {
+          setLoginError("Incorrect email or password. Please try again.");
+        } finally {
+          setLoginLoading(false);
         }
+      };
+
+      const handleLogout = async () => {
+        const { auth, signOut } = window.firebase;
+        await signOut(auth);
+        setUser(null);
+        setPayments([]);
+        setLoading(true);
       };
 
       const calculateMonthsPassed = (fromDate, toDate) => {
@@ -204,7 +237,8 @@
         }
       };
 
-      if (loading) {
+      // Still waiting for Firebase to boot
+      if (!authReady) {
         return (
           <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
             <div className="text-2xl font-bold text-indigo-900">Loading...</div>
@@ -223,30 +257,47 @@
         );
       }
 
-      if (!authenticated) {
+      // Not logged in — show login form
+      if (!user) {
         return (
           <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
               <h1 className="text-3xl font-bold text-indigo-900 mb-2">Sarah Tracker</h1>
-              <p className="text-gray-500 mb-8">Enter your 4-digit PIN</p>
+              <p className="text-gray-500 mb-8">Sign in to access the dashboard</p>
+              <input
+                type="email"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                className="w-full px-4 py-3 border-2 border-indigo-100 rounded-xl focus:outline-none focus:border-indigo-500 mb-3 bg-gray-50 text-lg"
+              />
               <input
                 type="password"
-                inputMode="numeric"
-                maxLength="4"
-                value={pinInput}
-                onChange={(e) => setPinInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleUnlock()}
-                placeholder="••••"
-                className="w-full text-center text-4xl tracking-widest px-4 py-4 border-2 border-indigo-100 rounded-xl focus:outline-none focus:border-indigo-500 mb-4 bg-gray-50"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                className="w-full px-4 py-3 border-2 border-indigo-100 rounded-xl focus:outline-none focus:border-indigo-500 mb-4 bg-gray-50 text-lg"
               />
               <button
-                onClick={handleUnlock}
-                className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 transition-colors shadow-lg"
+                onClick={handleLogin}
+                disabled={loginLoading}
+                className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 transition-colors shadow-lg disabled:opacity-50"
               >
-                Unlock Dashboard
+                {loginLoading ? "Signing in..." : "Sign In"}
               </button>
-              {pinError && <p className="text-red-500 mt-4 font-medium">{pinError}</p>}
+              {loginError && <p className="text-red-500 mt-4 font-medium">{loginError}</p>}
             </div>
+          </div>
+        );
+      }
+
+      // Logged in but payments still loading
+      if (loading) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+            <div className="text-2xl font-bold text-indigo-900">Loading...</div>
           </div>
         );
       }
@@ -256,9 +307,17 @@
       return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-8">
           <div className="max-w-4xl mx-auto">
-            <h1 className="text-3xl md:text-4xl font-bold text-center text-indigo-900 mb-8">
-              Sarah Rent Tracker Dashboard
-            </h1>
+            <div className="flex justify-between items-center mb-8">
+              <h1 className="text-3xl md:text-4xl font-bold text-center text-indigo-900">
+                Sarah Rent Tracker Dashboard
+              </h1>
+              <button
+                onClick={handleLogout}
+                className="text-sm text-gray-400 hover:text-red-500 font-medium transition-colors"
+              >
+                Sign Out
+              </button>
+            </div>
 
             <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
               <div className="mb-6">
@@ -391,4 +450,9 @@
     ReactDOM.render(<App />, document.getElementById("root"));
   </script>
 </body>
-</html>
+</html>'''
+
+with open('index.html', 'w') as f:
+    f.write(content)
+
+print("index.html written successfully")
