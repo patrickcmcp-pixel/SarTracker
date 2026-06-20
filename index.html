@@ -6,7 +6,6 @@
   <title>Sarah Rent Tracker</title>
   <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <link
     href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
     rel="stylesheet"
@@ -17,425 +16,357 @@
 
   <script src="./config.js"></script>
 
-  <!-- Firebase SDK (compat / non-module build, to avoid conflicting with Babel Standalone's script scanner) -->
+  <!-- Firebase compat SDK: plain global scripts, no modules, no build step needed -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+
   <script>
-    if (!window.FIREBASE_CONFIG) {
-      console.error("Missing Firebase config. Make sure config.js is loaded.");
-      window.firebaseInitError = "Missing Firebase config";
-      window.dispatchEvent(new Event("firebaseInitError"));
+    var firebaseOk = !!window.FIREBASE_CONFIG;
+    var db, auth;
+    if (!firebaseOk) {
+      console.error("Missing Firebase config. Make sure config.js is loaded before this script.");
     } else {
       firebase.initializeApp(window.FIREBASE_CONFIG);
-      const db = firebase.firestore();
-      const auth = firebase.auth();
-
-      window.firebase = {
-        db,
-        auth,
-        collection: (database, name) => database.collection(name),
-        addDoc: (collRef, data) => collRef.add(data),
-        deleteDoc: (docRef) => docRef.delete(),
-        doc: (database, collName, id) => database.collection(collName).doc(id),
-        onSnapshot: (collRef, onNext, onError) => collRef.onSnapshot(onNext, onError),
-        signInWithEmailAndPassword: (authInstance, email, password) =>
-          authInstance.signInWithEmailAndPassword(email, password),
-        onAuthStateChanged: (authInstance, cb) => authInstance.onAuthStateChanged(cb),
-        signOut: (authInstance) => authInstance.signOut()
-      };
-
-      window.firebaseReady = true;
-      window.dispatchEvent(new Event("firebaseReady"));
+      db = firebase.firestore();
+      auth = firebase.auth();
     }
   </script>
 
-  <script type="text/babel">
+  <!-- App: plain JavaScript, no JSX, no Babel required -->
+  <script>
+    var e = React.createElement;
+
     function App() {
-      const [selectedDate, setSelectedDate] = React.useState(
-        new Date().toISOString().split("T")[0]
-      );
-      const [payments, setPayments] = React.useState([]);
-      const [newPayment, setNewPayment] = React.useState({
-        item: "",
-        cost: "",
-        datePaid: ""
-      });
-      const [showAddForm, setShowAddForm] = React.useState(false);
-      const [loading, setLoading] = React.useState(true);
-      const [error, setError] = React.useState("");
+      var useState = React.useState;
+      var useEffect = React.useEffect;
 
-      // Auth state
-      const [user, setUser] = React.useState(null);
-      const [authReady, setAuthReady] = React.useState(false);
-      const [email, setEmail] = React.useState("");
-      const [password, setPassword] = React.useState("");
-      const [loginError, setLoginError] = React.useState("");
-      const [loginLoading, setLoginLoading] = React.useState(false);
+      var dateState = useState(new Date().toISOString().split("T")[0]);
+      var selectedDate = dateState[0], setSelectedDate = dateState[1];
 
-      const monthlyRent = 1100;
-      const moveInDate = new Date("2025-11-15T00:00:00");
+      var paymentsState = useState([]);
+      var payments = paymentsState[0], setPayments = paymentsState[1];
 
-      // Step 1: Wait for Firebase, then listen for auth state
-      React.useEffect(() => {
-        let cancelled = false;
+      var newPaymentState = useState({ item: "", cost: "", datePaid: "" });
+      var newPayment = newPaymentState[0], setNewPayment = newPaymentState[1];
 
-        async function init() {
-          try {
-            if (!window.firebaseReady) {
-              await new Promise((resolve, reject) => {
-                const onReady = () => { cleanup(); resolve(); };
-                const onError = () => { cleanup(); reject(new Error(window.firebaseInitError || "Firebase failed to initialize")); };
-                const cleanup = () => {
-                  window.removeEventListener("firebaseReady", onReady);
-                  window.removeEventListener("firebaseInitError", onError);
-                };
-                window.addEventListener("firebaseReady", onReady, { once: true });
-                window.addEventListener("firebaseInitError", onError, { once: true });
-              });
-            }
+      var showAddFormState = useState(false);
+      var showAddForm = showAddFormState[0], setShowAddForm = showAddFormState[1];
 
-            if (cancelled) return;
+      var loadingState = useState(true);
+      var loading = loadingState[0], setLoading = loadingState[1];
 
-            const { auth, onAuthStateChanged } = window.firebase;
+      var errorState = useState("");
+      var error = errorState[0], setError = errorState[1];
 
-            onAuthStateChanged(auth, (firebaseUser) => {
-              if (!cancelled) {
-                setUser(firebaseUser);
-                setAuthReady(true);
-                if (!firebaseUser) {
-                  setLoading(false);
-                }
-              }
-            });
-          } catch (err) {
-            console.error(err);
-            if (!cancelled) {
-              setError(err.message || "Failed to initialize app.");
-              setLoading(false);
-              setAuthReady(true);
-            }
-          }
+      var userState = useState(null);
+      var user = userState[0], setUser = userState[1];
+
+      var authReadyState = useState(false);
+      var authReady = authReadyState[0], setAuthReady = authReadyState[1];
+
+      var emailState = useState("");
+      var email = emailState[0], setEmail = emailState[1];
+
+      var passwordState = useState("");
+      var password = passwordState[0], setPassword = passwordState[1];
+
+      var loginErrorState = useState("");
+      var loginError = loginErrorState[0], setLoginError = loginErrorState[1];
+
+      var loginLoadingState = useState(false);
+      var loginLoading = loginLoadingState[0], setLoginLoading = loginLoadingState[1];
+
+      var monthlyRent = 1100;
+      var moveInDate = new Date("2025-11-15T00:00:00");
+
+      useEffect(function () {
+        if (!firebaseOk) {
+          setError("Missing Firebase config.");
+          setAuthReady(true);
+          setLoading(false);
+          return;
         }
-
-        init();
-        return () => { cancelled = true; };
+        var unsubscribe = auth.onAuthStateChanged(function (firebaseUser) {
+          setUser(firebaseUser);
+          setAuthReady(true);
+          if (!firebaseUser) {
+            setLoading(false);
+          }
+        });
+        return function () { unsubscribe(); };
       }, []);
 
-      // Step 2: Once logged in, subscribe to payments
-      React.useEffect(() => {
+      useEffect(function () {
         if (!user) return;
-
-        let cancelled = false;
-        const { db, collection, onSnapshot } = window.firebase;
-
-        const unsubscribe = onSnapshot(
-          collection(db, "payments"),
-          (snapshot) => {
-            const paymentsData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-            paymentsData.sort((a, b) => new Date(b.datePaid) - new Date(a.datePaid));
-            if (!cancelled) {
-              setPayments(paymentsData);
-              setLoading(false);
-            }
+        var unsubscribe = db.collection("payments").onSnapshot(
+          function (snapshot) {
+            var paymentsData = snapshot.docs.map(function (d) {
+              var data = d.data();
+              data.id = d.id;
+              return data;
+            });
+            paymentsData.sort(function (a, b) {
+              return new Date(b.datePaid) - new Date(a.datePaid);
+            });
+            setPayments(paymentsData);
+            setLoading(false);
           },
-          (err) => {
+          function (err) {
             console.error("Error loading payments:", err);
-            if (!cancelled) {
-              setError("Could not load payments.");
-              setLoading(false);
-            }
+            setError("Could not load payments.");
+            setLoading(false);
           }
         );
-
-        return () => {
-          cancelled = true;
-          unsubscribe();
-        };
+        return function () { unsubscribe(); };
       }, [user]);
 
-      const handleLogin = async () => {
+      function handleLogin() {
         setLoginError("");
         setLoginLoading(true);
-        try {
-          const { auth, signInWithEmailAndPassword } = window.firebase;
-          await signInWithEmailAndPassword(auth, email, password);
-        } catch (err) {
-          setLoginError("Incorrect email or password. Please try again.");
-        } finally {
-          setLoginLoading(false);
-        }
-      };
+        auth.signInWithEmailAndPassword(email, password)
+          .catch(function () {
+            setLoginError("Incorrect email or password. Please try again.");
+          })
+          .finally(function () {
+            setLoginLoading(false);
+          });
+      }
 
-      const handleLogout = async () => {
-        const { auth, signOut } = window.firebase;
-        await signOut(auth);
-        setUser(null);
-        setPayments([]);
-        setLoading(true);
-      };
+      function handleLogout() {
+        auth.signOut().then(function () {
+          setUser(null);
+          setPayments([]);
+          setLoading(true);
+        });
+      }
 
-      const calculateMonthsPassed = (fromDate, toDate) => {
-        const start = new Date(fromDate);
-        const end = new Date(toDate);
+      function calculateMonthsPassed(fromDate, toDate) {
+        var start = new Date(fromDate);
+        var end = new Date(toDate);
         if (end < start) return 0;
-        let months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
+        var months = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth());
         if (end.getDate() >= start.getDate()) { months += 1; }
         return Math.max(months, 1);
-      };
+      }
 
-      const calculateOwed = (checkDate) => {
-        const check = new Date(`${checkDate}T00:00:00`);
-        const monthsPassed = calculateMonthsPassed(moveInDate, check);
-        const totalOwed = monthsPassed * monthlyRent;
-        const totalPaid = payments
-          .filter((p) => new Date(`${p.datePaid}T00:00:00`) <= check)
-          .reduce((sum, p) => sum + Number(p.cost || 0), 0);
-        return { totalOwed, totalPaid, balance: totalOwed - totalPaid, monthsPassed };
-      };
+      function calculateOwed(checkDate) {
+        var check = new Date(checkDate + "T00:00:00");
+        var monthsPassed = calculateMonthsPassed(moveInDate, check);
+        var totalOwed = monthsPassed * monthlyRent;
+        var totalPaid = payments
+          .filter(function (p) { return new Date(p.datePaid + "T00:00:00") <= check; })
+          .reduce(function (sum, p) { return sum + Number(p.cost || 0); }, 0);
+        return { totalOwed: totalOwed, totalPaid: totalPaid, balance: totalOwed - totalPaid, monthsPassed: monthsPassed };
+      }
 
-      const handleAddPayment = async () => {
-        const item = newPayment.item.trim();
-        const cost = parseFloat(newPayment.cost);
-        const datePaid = newPayment.datePaid;
-        if (!item || !datePaid || Number.isNaN(cost) || cost <= 0) {
+      function handleAddPayment() {
+        var item = newPayment.item.trim();
+        var cost = parseFloat(newPayment.cost);
+        var datePaid = newPayment.datePaid;
+        if (!item || !datePaid || isNaN(cost) || cost <= 0) {
           alert("Please enter a valid item, cost, and payment date.");
           return;
         }
-        try {
-          const { db, collection, addDoc } = window.firebase;
-          await addDoc(collection(db, "payments"), {
-            item, cost, datePaid, createdAt: new Date().toISOString()
-          });
+        db.collection("payments").add({
+          item: item,
+          cost: cost,
+          datePaid: datePaid,
+          createdAt: new Date().toISOString()
+        }).then(function () {
           setNewPayment({ item: "", cost: "", datePaid: "" });
           setShowAddForm(false);
-        } catch (err) {
+        }).catch(function (err) {
           console.error("Error adding payment:", err);
           alert("Error adding payment. Please try again.");
-        }
-      };
+        });
+      }
 
-      const handleDeletePayment = async (paymentId) => {
-        try {
-          const { db, doc, deleteDoc } = window.firebase;
-          await deleteDoc(doc(db, "payments", paymentId));
-        } catch (err) {
+      function handleDeletePayment(paymentId) {
+        db.collection("payments").doc(paymentId).delete().catch(function (err) {
           console.error("Error deleting payment:", err);
           alert("Error deleting payment. Please try again.");
-        }
-      };
+        });
+      }
 
-      // Still waiting for Firebase to boot
       if (!authReady) {
-        return (
-          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-            <div className="text-2xl font-bold text-indigo-900">Loading...</div>
-          </div>
+        return e("div", { className: "min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center" },
+          e("div", { className: "text-2xl font-bold text-indigo-900" }, "Loading...")
         );
       }
 
       if (error) {
-        return (
-          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6">
-            <div className="bg-white rounded-lg shadow-lg p-6 max-w-lg w-full">
-              <h1 className="text-2xl font-bold text-red-700 mb-2">App Error</h1>
-              <p className="text-gray-700">{error}</p>
-            </div>
-          </div>
+        return e("div", { className: "min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-6" },
+          e("div", { className: "bg-white rounded-lg shadow-lg p-6 max-w-lg w-full" },
+            e("h1", { className: "text-2xl font-bold text-red-700 mb-2" }, "App Error"),
+            e("p", { className: "text-gray-700" }, error)
+          )
         );
       }
 
-      // Not logged in — show login form
       if (!user) {
-        return (
-          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center">
-              <h1 className="text-3xl font-bold text-indigo-900 mb-2">Sarah Tracker</h1>
-              <p className="text-gray-500 mb-8">Sign in to access the dashboard</p>
-              <input
-                type="email"
-                placeholder="Email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                className="w-full px-4 py-3 border-2 border-indigo-100 rounded-xl focus:outline-none focus:border-indigo-500 mb-3 bg-gray-50 text-lg"
-              />
-              <input
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                className="w-full px-4 py-3 border-2 border-indigo-100 rounded-xl focus:outline-none focus:border-indigo-500 mb-4 bg-gray-50 text-lg"
-              />
-              <button
-                onClick={handleLogin}
-                disabled={loginLoading}
-                className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 transition-colors shadow-lg disabled:opacity-50"
-              >
-                {loginLoading ? "Signing in..." : "Sign In"}
-              </button>
-              {loginError && <p className="text-red-500 mt-4 font-medium">{loginError}</p>}
-            </div>
-          </div>
+        return e("div", { className: "min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4" },
+          e("div", { className: "bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm text-center" },
+            e("h1", { className: "text-3xl font-bold text-indigo-900 mb-2" }, "Sarah Tracker"),
+            e("p", { className: "text-gray-500 mb-8" }, "Sign in to access the dashboard"),
+            e("input", {
+              type: "email",
+              placeholder: "Email",
+              value: email,
+              onChange: function (ev) { setEmail(ev.target.value); },
+              onKeyDown: function (ev) { if (ev.key === "Enter") handleLogin(); },
+              className: "w-full px-4 py-3 border-2 border-indigo-100 rounded-xl focus:outline-none focus:border-indigo-500 mb-3 bg-gray-50 text-lg"
+            }),
+            e("input", {
+              type: "password",
+              placeholder: "Password",
+              value: password,
+              onChange: function (ev) { setPassword(ev.target.value); },
+              onKeyDown: function (ev) { if (ev.key === "Enter") handleLogin(); },
+              className: "w-full px-4 py-3 border-2 border-indigo-100 rounded-xl focus:outline-none focus:border-indigo-500 mb-4 bg-gray-50 text-lg"
+            }),
+            e("button", {
+              onClick: handleLogin,
+              disabled: loginLoading,
+              className: "w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 transition-colors shadow-lg disabled:opacity-50"
+            }, loginLoading ? "Signing in..." : "Sign In"),
+            loginError ? e("p", { className: "text-red-500 mt-4 font-medium" }, loginError) : null
+          )
         );
       }
 
-      // Logged in but payments still loading
       if (loading) {
-        return (
-          <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-            <div className="text-2xl font-bold text-indigo-900">Loading...</div>
-          </div>
+        return e("div", { className: "min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center" },
+          e("div", { className: "text-2xl font-bold text-indigo-900" }, "Loading...")
         );
       }
 
-      const result = calculateOwed(selectedDate);
+      var result = calculateOwed(selectedDate);
 
-      return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-8">
-          <div className="max-w-4xl mx-auto">
-            <div className="flex justify-between items-center mb-8">
-              <h1 className="text-3xl md:text-4xl font-bold text-center text-indigo-900">
-                Sarah Rent Tracker Dashboard
-              </h1>
-              <button
-                onClick={handleLogout}
-                className="text-sm text-gray-400 hover:text-red-500 font-medium transition-colors"
-              >
-                Sign Out
-              </button>
-            </div>
+      return e("div", { className: "min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 md:p-8" },
+        e("div", { className: "max-w-4xl mx-auto" },
+          e("div", { className: "flex justify-between items-center mb-8" },
+            e("h1", { className: "text-3xl md:text-4xl font-bold text-center text-indigo-900" }, "Sarah Rent Tracker Dashboard"),
+            e("button", {
+              onClick: handleLogout,
+              className: "text-sm text-gray-400 hover:text-red-500 font-medium transition-colors"
+            }, "Sign Out")
+          ),
 
-            <div className="bg-white rounded-2xl shadow-xl p-6 mb-6">
-              <div className="mb-6">
-                <label className="block text-sm font-bold text-gray-500 uppercase tracking-wider mb-2">
-                  Check Balance For Date:
-                </label>
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-full px-4 py-3 border-2 border-indigo-50 rounded-lg text-lg focus:outline-none focus:border-indigo-500 bg-gray-50"
-                />
-              </div>
+          e("div", { className: "bg-white rounded-2xl shadow-xl p-6 mb-6" },
+            e("div", { className: "mb-6" },
+              e("label", { className: "block text-sm font-bold text-gray-500 uppercase tracking-wider mb-2" }, "Check Balance For Date:"),
+              e("input", {
+                type: "date",
+                value: selectedDate,
+                onChange: function (ev) { setSelectedDate(ev.target.value); },
+                className: "w-full px-4 py-3 border-2 border-indigo-50 rounded-lg text-lg focus:outline-none focus:border-indigo-500 bg-gray-50"
+              })
+            ),
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                  <p className="text-xs font-bold text-blue-400 uppercase mb-1">Months Passed</p>
-                  <p className="text-2xl font-bold text-blue-700">{result.monthsPassed}</p>
-                </div>
-                <div className="bg-red-50 p-4 rounded-xl border border-red-100">
-                  <p className="text-xs font-bold text-red-400 uppercase mb-1">Total Owed</p>
-                  <p className="text-2xl font-bold text-red-700">${result.totalOwed.toLocaleString()}</p>
-                </div>
-                <div className="bg-green-50 p-4 rounded-xl border border-green-100">
-                  <p className="text-xs font-bold text-green-400 uppercase mb-1">Total Paid</p>
-                  <p className="text-2xl font-bold text-green-700">${result.totalPaid.toLocaleString()}</p>
-                </div>
-              </div>
+            e("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4 mb-6" },
+              e("div", { className: "bg-blue-50 p-4 rounded-xl border border-blue-100" },
+                e("p", { className: "text-xs font-bold text-blue-400 uppercase mb-1" }, "Months Passed"),
+                e("p", { className: "text-2xl font-bold text-blue-700" }, result.monthsPassed)
+              ),
+              e("div", { className: "bg-red-50 p-4 rounded-xl border border-red-100" },
+                e("p", { className: "text-xs font-bold text-red-400 uppercase mb-1" }, "Total Owed"),
+                e("p", { className: "text-2xl font-bold text-red-700" }, "$" + result.totalOwed.toLocaleString())
+              ),
+              e("div", { className: "bg-green-50 p-4 rounded-xl border border-green-100" },
+                e("p", { className: "text-xs font-bold text-green-400 uppercase mb-1" }, "Total Paid"),
+                e("p", { className: "text-2xl font-bold text-green-700" }, "$" + result.totalPaid.toLocaleString())
+              )
+            ),
 
-              <div className={`p-6 rounded-2xl border-2 ${result.balance > 0 ? "bg-red-600 border-red-700 text-white" : "bg-green-600 border-green-700 text-white"}`}>
-                <p className="text-sm font-bold uppercase opacity-80 mb-1">Current Balance:</p>
-                <p className="text-4xl font-black">
-                  ${Math.abs(result.balance).toLocaleString()} {result.balance > 0 ? "OWED" : "CREDIT"}
-                </p>
-              </div>
-            </div>
+            e("div", { className: "p-6 rounded-2xl border-2 " + (result.balance > 0 ? "bg-red-600 border-red-700 text-white" : "bg-green-600 border-green-700 text-white") },
+              e("p", { className: "text-sm font-bold uppercase opacity-80 mb-1" }, "Current Balance:"),
+              e("p", { className: "text-4xl font-black" }, "$" + Math.abs(result.balance).toLocaleString() + " " + (result.balance > 0 ? "OWED" : "CREDIT"))
+            )
+          ),
 
-            <div className="bg-white rounded-2xl shadow-xl p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold text-gray-800">Payment History</h2>
-                <button
-                  onClick={() => setShowAddForm(!showAddForm)}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-bold transition-colors"
-                >
-                  {showAddForm ? "Close" : "+ Add New"}
-                </button>
-              </div>
+          e("div", { className: "bg-white rounded-2xl shadow-xl p-6" },
+            e("div", { className: "flex justify-between items-center mb-6" },
+              e("h2", { className: "text-xl font-bold text-gray-800" }, "Payment History"),
+              e("button", {
+                onClick: function () { setShowAddForm(!showAddForm); },
+                className: "bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-bold transition-colors"
+              }, showAddForm ? "Close" : "+ Add New")
+            ),
 
-              {showAddForm && (
-                <div className="bg-indigo-50 p-6 rounded-xl mb-6 border border-indigo-100">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div>
-                      <label className="block text-xs font-bold text-indigo-400 uppercase mb-1">Item</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Rent Payment"
-                        value={newPayment.item}
-                        onChange={(e) => setNewPayment({ ...newPayment, item: e.target.value })}
-                        className="w-full px-3 py-2 border border-indigo-200 rounded bg-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-indigo-400 uppercase mb-1">Amount</label>
-                      <input
-                        type="number"
-                        placeholder="0.00"
-                        value={newPayment.cost}
-                        onChange={(e) => setNewPayment({ ...newPayment, cost: e.target.value })}
-                        className="w-full px-3 py-2 border border-indigo-200 rounded bg-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-indigo-400 uppercase mb-1">Date</label>
-                      <input
-                        type="date"
-                        value={newPayment.datePaid}
-                        onChange={(e) => setNewPayment({ ...newPayment, datePaid: e.target.value })}
-                        className="w-full px-3 py-2 border border-indigo-200 rounded bg-white"
-                      />
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleAddPayment}
-                    className="w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition-colors"
-                  >
-                    Save Payment Record
-                  </button>
-                </div>
-              )}
+            showAddForm ? e("div", { className: "bg-indigo-50 p-6 rounded-xl mb-6 border border-indigo-100" },
+              e("div", { className: "grid grid-cols-1 md:grid-cols-3 gap-4 mb-4" },
+                e("div", null,
+                  e("label", { className: "block text-xs font-bold text-indigo-400 uppercase mb-1" }, "Item"),
+                  e("input", {
+                    type: "text",
+                    placeholder: "e.g. Rent Payment",
+                    value: newPayment.item,
+                    onChange: function (ev) { setNewPayment(Object.assign({}, newPayment, { item: ev.target.value })); },
+                    className: "w-full px-3 py-2 border border-indigo-200 rounded bg-white"
+                  })
+                ),
+                e("div", null,
+                  e("label", { className: "block text-xs font-bold text-indigo-400 uppercase mb-1" }, "Amount"),
+                  e("input", {
+                    type: "number",
+                    placeholder: "0.00",
+                    value: newPayment.cost,
+                    onChange: function (ev) { setNewPayment(Object.assign({}, newPayment, { cost: ev.target.value })); },
+                    className: "w-full px-3 py-2 border border-indigo-200 rounded bg-white"
+                  })
+                ),
+                e("div", null,
+                  e("label", { className: "block text-xs font-bold text-indigo-400 uppercase mb-1" }, "Date"),
+                  e("input", {
+                    type: "date",
+                    value: newPayment.datePaid,
+                    onChange: function (ev) { setNewPayment(Object.assign({}, newPayment, { datePaid: ev.target.value })); },
+                    className: "w-full px-3 py-2 border border-indigo-200 rounded bg-white"
+                  })
+                )
+              ),
+              e("button", {
+                onClick: handleAddPayment,
+                className: "w-full bg-green-600 text-white py-3 rounded-lg font-bold hover:bg-green-700 transition-colors"
+              }, "Save Payment Record")
+            ) : null,
 
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="text-left border-b-2 border-gray-100">
-                      <th className="pb-4 font-bold text-gray-400 uppercase text-xs">Item</th>
-                      <th className="pb-4 font-bold text-gray-400 uppercase text-xs">Amount</th>
-                      <th className="pb-4 font-bold text-gray-400 uppercase text-xs">Date</th>
-                      <th className="pb-4 font-bold text-gray-400 uppercase text-xs text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {payments.length === 0 ? (
-                      <tr><td colSpan="4" className="py-8 text-center text-gray-400">No records found</td></tr>
-                    ) : (
-                      payments.map((payment) => (
-                        <tr key={payment.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="py-4 font-medium text-gray-700">{payment.item}</td>
-                          <td className="py-4 font-bold text-indigo-600">${Number(payment.cost).toLocaleString()}</td>
-                          <td className="py-4 text-gray-500">{new Date(`${payment.datePaid}T00:00:00`).toLocaleDateString()}</td>
-                          <td className="py-4 text-right">
-                            <button
-                              onClick={() => handleDeletePayment(payment.id)}
-                              className="text-red-400 hover:text-red-600 font-bold text-sm"
-                            >
-                              Delete
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
+            e("div", { className: "overflow-x-auto" },
+              e("table", { className: "w-full" },
+                e("thead", null,
+                  e("tr", { className: "text-left border-b-2 border-gray-100" },
+                    e("th", { className: "pb-4 font-bold text-gray-400 uppercase text-xs" }, "Item"),
+                    e("th", { className: "pb-4 font-bold text-gray-400 uppercase text-xs" }, "Amount"),
+                    e("th", { className: "pb-4 font-bold text-gray-400 uppercase text-xs" }, "Date"),
+                    e("th", { className: "pb-4 font-bold text-gray-400 uppercase text-xs text-right" }, "Action")
+                  )
+                ),
+                e("tbody", { className: "divide-y divide-gray-50" },
+                  payments.length === 0
+                    ? e("tr", null, e("td", { colSpan: "4", className: "py-8 text-center text-gray-400" }, "No records found"))
+                    : payments.map(function (payment) {
+                        return e("tr", { key: payment.id, className: "hover:bg-gray-50 transition-colors" },
+                          e("td", { className: "py-4 font-medium text-gray-700" }, payment.item),
+                          e("td", { className: "py-4 font-bold text-indigo-600" }, "$" + Number(payment.cost).toLocaleString()),
+                          e("td", { className: "py-4 text-gray-500" }, new Date(payment.datePaid + "T00:00:00").toLocaleDateString()),
+                          e("td", { className: "py-4 text-right" },
+                            e("button", {
+                              onClick: function () { handleDeletePayment(payment.id); },
+                              className: "text-red-400 hover:text-red-600 font-bold text-sm"
+                            }, "Delete")
+                          )
+                        );
+                      })
+                )
+              )
+            )
+          )
+        )
       );
     }
 
-    ReactDOM.render(<App />, document.getElementById("root"));
+    ReactDOM.render(e(App), document.getElementById("root"));
   </script>
 </body>
 </html>
