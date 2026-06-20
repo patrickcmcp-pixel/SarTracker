@@ -17,44 +17,32 @@
 
   <script src="./config.js"></script>
 
-  <!-- Firebase SDK -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
-    import {
-      getFirestore,
-      collection,
-      addDoc,
-      deleteDoc,
-      doc,
-      onSnapshot
-    } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-firestore.js";
-    import {
-      getAuth,
-      signInWithEmailAndPassword,
-      onAuthStateChanged,
-      signOut
-    } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-auth.js";
-
+  <!-- Firebase SDK (compat / non-module build, to avoid conflicting with Babel Standalone's script scanner) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script>
     if (!window.FIREBASE_CONFIG) {
       console.error("Missing Firebase config. Make sure config.js is loaded.");
       window.firebaseInitError = "Missing Firebase config";
       window.dispatchEvent(new Event("firebaseInitError"));
     } else {
-      const app = initializeApp(window.FIREBASE_CONFIG);
-      const db = getFirestore(app);
-      const auth = getAuth(app);
+      firebase.initializeApp(window.FIREBASE_CONFIG);
+      const db = firebase.firestore();
+      const auth = firebase.auth();
 
       window.firebase = {
         db,
         auth,
-        collection,
-        addDoc,
-        deleteDoc,
-        doc,
-        onSnapshot,
-        signInWithEmailAndPassword,
-        onAuthStateChanged,
-        signOut
+        collection: (database, name) => database.collection(name),
+        addDoc: (collRef, data) => collRef.add(data),
+        deleteDoc: (docRef) => docRef.delete(),
+        doc: (database, collName, id) => database.collection(collName).doc(id),
+        onSnapshot: (collRef, onNext, onError) => collRef.onSnapshot(onNext, onError),
+        signInWithEmailAndPassword: (authInstance, email, password) =>
+          authInstance.signInWithEmailAndPassword(email, password),
+        onAuthStateChanged: (authInstance, cb) => authInstance.onAuthStateChanged(cb),
+        signOut: (authInstance) => authInstance.signOut()
       };
 
       window.firebaseReady = true;
